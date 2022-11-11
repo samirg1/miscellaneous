@@ -1,0 +1,65 @@
+<html>
+    <head>
+        <title>Consultation Registration</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+        <link rel="stylesheet" href="https://code.getmdl.io/1.3.0/material.blue_grey-deep_purple.min.css" />
+        <script defer src="https://code.getmdl.io/1.3.0/material.min.js"></script>
+        <style>
+            .mdl-layout__header-row {
+                padding: 0 16px 0 16px;
+            }
+            a {
+                cursor: pointer;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="mdl-layout mdl-js-layout mdl-layout--fixed-header">
+            <header class="mdl-layout__header">
+                <div class="mdl-layout__header-row">
+                    <span class="mdl-layout-title">Consultation Registration</span>
+                    <div class="mdl-layout-spacer"></div>
+                    <nav class="mdl-navigation">
+                        <a class="mdl-navigation__link" href="index.html">Back</a>
+                    </nav>
+                </div>
+            </header>
+            <main class="mdl-layout__content">
+                <div class="page-content">
+                    <div class="mdl-grid">
+                        <div class="mdl-cell mdl-cell--4-col mdl-cell--2-col-tablet mdl-cell--hide-phone"></div>
+                        <div class="mdl-cell mdl-cell--4-col mdl-cell--4-col-tablet mdl-cell--4-col-phone">
+                            <h4>Add a student to the queue</h4>
+                            <div class="mdl-textfield mdl-js-textfield mdl-textfield--floating-label">
+                                <input class="mdl-textfield__input" type="text" id="fullName" required>
+                                <label class="mdl-textfield__label" for="fullName">Full Name</label>
+                                <span id="fullName_msg" class="mdl-textfield__error"></span>
+                            </div>
+                            <div class="mdl-textfield mdl-js-textfield mdl-textfield--floating-label">
+                                <input class="mdl-textfield__input" type="text" pattern="^([1-3]{1})([0-9]{7})$" id="studentId" required>
+                                <label class="mdl-textfield__label" for="studentId">Student ID</label>
+                                <span id="studentId_msg" class="mdl-textfield__error"></span>
+                            </div>
+                            <div class="mdl-textfield mdl-js-textfield mdl-textfield--floating-label">
+                                <textarea class="mdl-textfield__input" rows="3" type="text" id="problem" required></textarea>
+                                <label class="mdl-textfield__label" for="problem">Briefly describe the problem</label>
+                                <span id="problem_msg" class="mdl-textfield__error"></span>
+                            </div>
+                        </div>
+                        <div class="mdl-cell mdl-cell--4-col mdl-cell--2-col-tablet mdl-cell--hide-phone"></div>
+                    </div>
+                    <div class="mdl-grid">
+                        <div class="mdl-cell mdl-cell--4-col mdl-cell--2-col-tablet mdl-cell--hide-phone"></div>
+                        <div class="mdl-cell mdl-cell--4-col mdl-cell--4-col-tablet mdl-cell--4-col-phone">
+                            <button class="mdl-button mdl-js-button mdl-button--raised mdl-js-ripple-effect mdl-button--accent" onclick="addStudent()">Add Student</button>
+                        </div>
+                        <div class="mdl-cell mdl-cell--4-col mdl-cell--2-col-tablet mdl-cell--hide-phone"></div>
+                    </div>
+                </div>
+            </main>
+        </div>
+        <script src="js/shared.js"></script>
+        <script src="js/add.js"></script>
+    </body>
+</html>
