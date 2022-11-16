@@ -5,15 +5,14 @@
 from sqlite3 import (
     Connection as SQLConnection,
     OperationalError as SQLOperationalError,
-    connect as sql_db_connect
+    connect as sql_db_connect,
 )
-from typing import cast
-from pandas import read_sql_query, DataFrame
+from pandas import Series, read_sql_query
+from os import listdir
 
 
 def get_messages(connection: SQLConnection):
 
-    # get the 10 entries of the message table using pandas
     messages = read_sql_query(
         """
         select 
@@ -47,41 +46,66 @@ def get_messages(connection: SQLConnection):
 
 
 def get_db_connection() -> SQLConnection:
+    """
+    Get the database connection for the right user.
+    - Returns (SQLConnection): The database connection.
+    """
+    # list all users
+    potential_users = listdir("/Users")
+    print("\nSELECT USER")
+    for i, user in enumerate(potential_users, start=1):
+        print(f"- {i}: {user}")
+
     connection: SQLConnection
     while True:
-        user = input("enter mac username : ")
+        user = input("enter user number : ") # get user to pick which user to use
         try:
-            connection = sql_db_connect(f"/Users/{user}/Library/Messages/chat.db")
+            index = int(user) - 1
+            connection = sql_db_connect(f"/Users/{potential_users[index]}/Library/Messages/chat.db") # get db connection
             break
+        except (ValueError, IndexError):
+            print("invalid user number - try again")
         except SQLOperationalError:
-            print("invalid username - try again")
+            print("messages not found for this user - try again")
+
     return connection
 
 
 def get_chat_id(connection: SQLConnection) -> int:
-    chat_name: str = ''
-    chat_id_query: DataFrame = DataFrame()
-    while True:
-        chat_name = input("enter wordle chat name : ").lower()
-        chat_id_query = read_sql_query(
-            f"""
-            SELECT
-                ROWID
-            FROM
-                chat
-            WHERE
-                LOWER(display_name) = "{chat_name}"
-            """,
-            connection,
-        )
-        try: 
-            if chat_id_query.empty or not chat_name:
-                raise ValueError
-            break
-        except:
-            print('invalid chat name - try again')
+    """
+    Get the chat id of the wordle chat the user wants the information for.
+    - Input:
+        - connection (SQLConnection): The database connection.
+    - Returns (int): The chat id. 
+    """    
+    all_chats_query = read_sql_query(
+        """
+        SELECT
+            display_name, ROWID
+        FROM
+            chat
+        WHERE
+            display_name != ''
+        """,
+        connection,
+    )  # get all group chats
+    chat_names: Series[str] = all_chats_query["display_name"]  # extract the names of each chat
+    chat_ids: Series[int] = all_chats_query["ROWID"]  # extract the ids of each chat
 
-    return int(cast(str, chat_id_query["ROWID"][0]))
+    print("\nSELECT CHAT FROM BELOW")  # print chat name options
+    for i, name in enumerate(chat_names, start=1):
+        print(f"- {i}: {name}")
+
+    index: int
+    while True:
+        index_string = input("enter correct chat number : ")  # get user to select chat number
+        try:
+            index = int(index_string) - 1
+            break
+        except (ValueError, IndexError):
+            print("invalid chat number - try again")
+
+    return chat_ids[index]
 
 
 def main():
