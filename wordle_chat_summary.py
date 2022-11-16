@@ -4,19 +4,49 @@
 
 from os import listdir
 from sqlite3 import Connection, OperationalError, connect
-from typing import Generator, Iterable, cast
+from typing import Callable, Iterable, Iterator, Sequence, TypeVar, cast
 
 from pandas import Series, read_sql_query
+
+T = TypeVar("T")
 
 
 class User:
     def __init__(self, name: str, number: str):
         self._name = name
-        self._number = number
+        self.number = number
         self._games: dict[int, int] = {}
 
     def __repr__(self) -> str:
-        return f"({self._name}, {self._number}"
+        return f"({self._name}, {self.number}, {self._games})"
+
+    def add_wordle(self, no: int, guesses: int):
+        self._games[no] = guesses
+
+    @property
+    def completed(self) -> int:
+        return len(self._games)
+
+    @property
+    def average_guesses(self) -> float:
+        if self.completed == 0:
+            return 0
+        return sum(self._games.values()) / self.completed
+
+
+def find(sequence: Sequence[T], callable: Callable[[T], bool]) -> T | None:
+    """
+    Find the first element in a sequence that satisfies a condition.
+    - Input:
+        - sequence (Sequence[T]): The sequence to look in.
+        - callable (Callable[[T], bool]): Callable to test for the condition.
+    - Returns (T | None): The element or None if no element was found.
+    - Time Complexity: O(S), where S is the length of the sequence.
+    - Aux space complexity: O(1).
+    """
+    for element in sequence:
+        if callable(element):
+            return element
 
 
 def get_db_connection() -> Connection:
@@ -148,16 +178,17 @@ def get_users_from_numbers(numbers: Iterable[str]) -> list[User]:
                 found_users.append(User(name, number))
                 break
 
+    found_users.append(User("self", ""))
     return found_users
 
 
-def get_messages(connection: Connection, chat_id: int) -> Generator[tuple[str, str], None, None]:
+def get_messages(connection: Connection, chat_id: int) -> Iterator[tuple[str, str]]:
     """
     Get the messages from a particular chat.
     - Input:
         - connection (Connection): The database connection.
         - chat_id (int): The chat to find messages in.
-    - Returns (Generator[tuple[str, str]]): Generator of (text, number) for each message.
+    - Returns (Iterator[tuple[str, str]]): Iterator of (text, number) for each message.
     """
     messages = read_sql_query(
         f"""
@@ -182,16 +213,43 @@ def get_messages(connection: Connection, chat_id: int) -> Generator[tuple[str, s
         connection,
     )  # get all messages from the chat
 
-    return (cast(tuple[str, str], messages.iloc[i, :]) for i in range(len(messages)))  # return generator of info access
+    return (cast(tuple[str, str], messages.iloc[i, :]) for i in range(len(messages)))  # return iterator of info access
+
+
+def anaylse_messages(members: list[User], messages: Iterator[tuple[str, str]]):
+    wordle_number: int
+    guesses: int
+    for text, phone in messages:
+        match text.split(" "):
+            case ["Wordle", no, score]:
+                try:
+                    wordle_number = int(no)
+                    guesses = int(score[0])
+                except ValueError:
+                    continue
+            case _:
+                continue
+
+        member = find(members, lambda member: member.number == phone) if phone is not None else members[-1]
+        if member is not None:
+            member.add_wordle(wordle_number, guesses)
+
+
+def print_summary(members: list[User], messages: Iterator[tuple[str, str]]):
+    anaylse_messages(members, messages)
+
+    members.sort(key=lambda user: user.completed, reverse=True)
+    print("COMPLETION SUMMARY")
+    for i, member in enumerate(members):
+        print(f'members')
 
 
 def main():
     connection = get_db_connection()
     chat_id = get_chat_id(connection)
-    print(get_chat_members(connection, chat_id))
-
-    for text, phone in get_messages(connection, chat_id):
-        print(text, phone)
+    members = get_chat_members(connection, chat_id)
+    messages = get_messages(connection, chat_id)
+    print_summary(members, messages)
 
 
 if __name__ == "__main__":
