@@ -7,37 +7,34 @@ from os import listdir
 from sqlite3 import Connection, OperationalError, connect
 from typing import Callable, Iterable, Iterator, Sequence, TypeVar, cast
 
-from pandas import Series, read_sql_query
+from pandas import DataFrame, Series, read_sql_query
 
 T = TypeVar("T")
 
 
-class User:
+class Member:
     def __init__(self, name: str, number: str):
         self.name = name
         self.number = number
         self._games: dict[int, int] = {}
+        self._current_guess_sum = 0
+
+        self.completed = 0
         self.fails = 0
+        self.average_guesses = 0
 
     def __repr__(self) -> str:
         return f"({self.name}, {self.number}, {self._games})"
 
     def add_wordle(self, no: int, guesses: int):
         self._games[no] = guesses
-
-    @property
-    def completed(self) -> int:
-        return len(self._games)
+        self._current_guess_sum += guesses
+        self.completed = len(self._games)
+        self.average_guesses = self._current_guess_sum / self.completed
 
     @property
     def attempted(self) -> int:
         return self.completed + self.fails
-
-    @property
-    def average_guesses(self) -> float:
-        if self.completed == 0:
-            return 0
-        return sum(self._games.values()) / self.completed
 
 
 def find(sequence: Sequence[T], /, *, key: Callable[[T], bool]) -> T | None:
@@ -55,10 +52,10 @@ def find(sequence: Sequence[T], /, *, key: Callable[[T], bool]) -> T | None:
             return element
 
 
-def get_db_connection() -> Connection:
+def get_db_connection() -> tuple[Connection, str]:
     """
     Get the database connection for the right user.
-    - Returns (Connection): The database connection.
+    - Returns (tuple[Connection, str]): The database connection and the user name responsible.
     """
     # list all users
     potential_users = listdir("/Users")
@@ -78,7 +75,7 @@ def get_db_connection() -> Connection:
         except OperationalError:
             print("messages not found for this user - try again")
 
-    return connection
+    return connection, potential_users[index]
 
 
 def get_chat_id(connection: Connection) -> int:
@@ -118,13 +115,14 @@ def get_chat_id(connection: Connection) -> int:
     return chat_ids[index]
 
 
-def get_chat_members(connection: Connection, chat_id: int) -> list[User]:
+def get_chat_members(connection: Connection, chat_id: int, user: str) -> list[Member]:
     """
     Get the members of a particular chat.
     - Input:
         - connection (Connection): The database connnection.
         - chat_id (int): The chat id of the chat to find members of.
-    - Returns (list[User]): The list of members.
+        - user (str): The name of the user.
+    - Returns (list[Member]): The list of members.
     """
     numbers: Series[str] = read_sql_query(
         f"""
@@ -144,33 +142,60 @@ def get_chat_members(connection: Connection, chat_id: int) -> list[User]:
         "id"
     ]  # get all numbers in a chat
 
-    return get_users_from_numbers(numbers)  # get users from the numbers
+    return get_members_from_numbers(numbers, user)  # get members from the numbers
 
 
-def get_users_from_numbers(numbers: Iterable[str]) -> list[User]:
+def get_addressbook_db_path(user: str) -> str:
+    """
+    Get the address-book database path.
+    - Input:
+        - user (str): The user.
+    - Returns (str): The path to the database file.
+    - Raises (ValueError): If no file is found.
+    """
+    address_source_path = f"/Users/{user}/Library/Application Support/AddressBook/Sources"  # base path
+    for dir in listdir(address_source_path):
+        if not dir.count("."):  # go one step in each folder
+            for file in listdir(f"{address_source_path}/{dir}"):
+                if file.count("."):  # find the correct file
+                    if file == "AddressBook-v22.abcddb":
+                        return f"{address_source_path}/{dir}/{file}"
+    raise ValueError
+
+
+def get_members_from_numbers(numbers: Iterable[str], user: str) -> list[Member]:
     """
     Get users based on their numbers.
     - Input:
-        - numbers (Iterable[str]): The numbers of the users.
-    - Returns (list[User]): The list of users belonging to each number.
+        - numbers (Iterable[str]): The phone numbers of the members.
+        - user (str): The name of the user.
+    - Returns (list[Member]): The list of members belonging to each number.
     """
     # connect to contacts
-    contacts_connection = connect("/Users/samir/Library/Application Support/AddressBook/Sources/AABB697B-2862-4D43-AAAD-94EB8D1EAD03/AddressBook-v22.abcddb")
-    all_contacts = read_sql_query(
-        """
-        SELECT 
-            zfirstname, zlastname, zfullnumber
-        FROM
-            zabcdrecord r 
-            JOIN 
-                zabcdphonenumber p 
-            ON 
-                r.z_pk = p.zowner
-        """,
-        contacts_connection,
-    )  # get all contacts
+    address_path: str
+    all_contacts = DataFrame()
+    try:
+        address_path = get_addressbook_db_path(user)
+        contacts_connection = connect(address_path)
 
-    found_users: list[User] = []
+        all_contacts = read_sql_query(
+            """
+            SELECT 
+                zfirstname, zlastname, zfullnumber
+            FROM
+                zabcdrecord r 
+                JOIN 
+                    zabcdphonenumber p 
+                ON 
+                    r.z_pk = p.zowner
+            """,
+            contacts_connection,
+        )  # get all contacts
+    except (ValueError, OperationalError):  # contact info was not able to be found
+        print("unable to find contacts")
+        return [Member(number, number) for number in numbers] + [Member("self", "")]
+
+    found_users: list[Member] = []
 
     for number in numbers:
         for i in range(len(all_contacts)):
@@ -182,12 +207,14 @@ def get_users_from_numbers(numbers: Iterable[str]) -> list[User]:
             name = ("".join(n for n in name if n.isalnum() or n == " ")).strip()  # clean up
 
             if number == contact_number:  # add a found user and break
-                found_users.append(User(name, number))
+                found_users.append(Member(name, number))
                 break
+        else:  # if we did not find a contact, set the contact name to just the number
+            found_users.append(Member(number, number))
 
     print("\nENTER USER NAME")
     self_name = input("enter user's display name: ")
-    found_users.append(User(self_name, ""))
+    found_users.append(Member(self_name, ""))
     return found_users
 
 
@@ -225,7 +252,7 @@ def get_messages(connection: Connection, chat_id: int) -> Iterator[tuple[str, st
     return (cast(tuple[str, str], messages.iloc[i, :]) for i in range(len(messages)))  # return iterator of info access
 
 
-def anaylse_messages(members: list[User], messages: Iterator[tuple[str, str]]) -> int | float:
+def anaylse_messages(members: list[Member], messages: Iterator[tuple[str, str]]) -> int | float:
     """
     Analyse messages to add wordle games to chat members.
     - Input:
@@ -267,11 +294,11 @@ def anaylse_messages(members: list[User], messages: Iterator[tuple[str, str]]) -
     return max(max_wordle_number - min_wordle_number + 1, 0)  # return total amount of days or 0 if no messages
 
 
-def print_summary(members: list[User], messages: Iterator[tuple[str, str]]):
+def print_summary(members: list[Member], messages: Iterator[tuple[str, str]]):
     """
     Print the summary of the Wordle group chat.
     - Input:
-        - members (list[User]): The members in the chat.
+        - members (list[Member]): The members in the chat.
         - messages (Iterator[tuple[str, str]]): The messages in the chat.
     """
     total_days = anaylse_messages(members, messages)  # analyse messages
@@ -295,11 +322,19 @@ def print_summary(members: list[User], messages: Iterator[tuple[str, str]]):
 
 
 def main():
-    connection = get_db_connection()  # get main db connection
+    connection, user = get_db_connection()  # get main db connection
     chat_id = get_chat_id(connection)  # get chat id of wordle chat
-    members = get_chat_members(connection, chat_id)  # get members of the chat
+    members = get_chat_members(connection, chat_id, user)  # get members of the chat
     messages = get_messages(connection, chat_id)  # get the messages of the chat
     print_summary(members, messages)  # print the summary of the chat
+
+    # m = read_sql_query(
+    #     """
+    #     SELECT text from message m JOIN chat_message_join c on m.ROWID = c.message_id WHERE chat_id = 2
+    #     """,
+    #     connection,
+    # )
+    # print(len(m))
 
 
 if __name__ == "__main__":
