@@ -13,12 +13,12 @@ T = TypeVar("T")
 
 class User:
     def __init__(self, name: str, number: str):
-        self._name = name
+        self.name = name
         self.number = number
         self._games: dict[int, int] = {}
 
     def __repr__(self) -> str:
-        return f"({self._name}, {self.number}, {self._games})"
+        return f"({self.name}, {self.number}, {self._games})"
 
     def add_wordle(self, no: int, guesses: int):
         self._games[no] = guesses
@@ -172,13 +172,15 @@ def get_users_from_numbers(numbers: Iterable[str]) -> list[User]:
             contact_number = "".join([n for n in contact_number if n != " "])  # remove spaces
             if contact_number[0] == "0":  # replace 0 at start with +61
                 contact_number = "+61" + contact_number[1:]
-            name = (first or "" + " " + last or "").strip()  # combine first and last names
+            name = first or "" + " " + last or ""  # combine first and last names
+            name = ("".join(n for n in name if n.isalnum() or n == " ")).strip()  # clean up
 
             if number == contact_number:  # add a found user and break
                 found_users.append(User(name, number))
                 break
 
-    found_users.append(User("self", ""))
+    self_name = input("Enter user's display name: ")
+    found_users.append(User(self_name, ""))
     return found_users
 
 
@@ -216,15 +218,21 @@ def get_messages(connection: Connection, chat_id: int) -> Iterator[tuple[str, st
     return (cast(tuple[str, str], messages.iloc[i, :]) for i in range(len(messages)))  # return iterator of info access
 
 
-def anaylse_messages(members: list[User], messages: Iterator[tuple[str, str]]):
+def anaylse_messages(members: list[User], messages: Iterator[tuple[str, str]]) -> int:
     wordle_number: int
     guesses: int
+    max_wordle_number: int = 0
+    min_wordle_number: int = 10_000
     for text, phone in messages:
         match text.split(" "):
-            case ["Wordle", no, score]:
+            case ["Wordle", no, score, *_]:
+                print(text)
                 try:
                     wordle_number = int(no)
                     guesses = int(score[0])
+
+                    max_wordle_number = max(max_wordle_number, wordle_number)
+                    min_wordle_number = min(min_wordle_number, wordle_number)
                 except ValueError:
                     continue
             case _:
@@ -234,14 +242,22 @@ def anaylse_messages(members: list[User], messages: Iterator[tuple[str, str]]):
         if member is not None:
             member.add_wordle(wordle_number, guesses)
 
+    return max_wordle_number - min_wordle_number + 1
+
 
 def print_summary(members: list[User], messages: Iterator[tuple[str, str]]):
-    anaylse_messages(members, messages)
+    total_days = anaylse_messages(members, messages)
+    max_name_length = len(max(members, key=lambda user: len(user.name)).name)
 
     members.sort(key=lambda user: user.completed, reverse=True)
-    print("COMPLETION SUMMARY")
-    for i, member in enumerate(members):
-        print(f'members')
+    print(f"\nCOMPLETION SUMMARY ({total_days} days)")
+    for i, member in enumerate(members, start=1):
+        print(f"{i}. {member.name:{max_name_length}} - {member.completed}")
+
+    members.sort(key=lambda user: user.average_guesses)
+    print("\nAVERAGE GUESSES")
+    for i, member in enumerate(members, start=1):
+        print(f"{i}. {member.name:{max_name_length}} - {member.average_guesses:.2f}")
 
 
 def main():
