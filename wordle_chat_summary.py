@@ -10,6 +10,7 @@ from typing import Callable, Iterable, Iterator, Sequence, TypeVar, cast
 from pandas import DataFrame, Series, read_sql_query
 
 T = TypeVar("T")
+ADDRESSBOOK_FILENAME = "AddressBook-v22.abcddb"
 
 
 class Member:
@@ -20,7 +21,7 @@ class Member:
         self._current_guess_sum = 0
 
         self.completed = 0
-        self.fails = 0
+        self.fails: set[int] = set()
         self.average_guesses = 0
 
     def __repr__(self) -> str:
@@ -34,7 +35,7 @@ class Member:
 
     @property
     def attempted(self) -> int:
-        return self.completed + self.fails
+        return self.completed + len(self.fails)
 
 
 def find(sequence: Sequence[T], /, *, key: Callable[[T], bool]) -> T | None:
@@ -151,16 +152,16 @@ def get_addressbook_db_path(user: str) -> str:
     - Input:
         - user (str): The user.
     - Returns (str): The path to the database file.
-    - Raises (ValueError): If no file is found.
+    - Raises (FileNotFoundError): If the file is not found.
     """
     address_source_path = f"/Users/{user}/Library/Application Support/AddressBook/Sources"  # base path
     for dir in listdir(address_source_path):
         if not dir.count("."):  # go one step in each folder
             for file in listdir(f"{address_source_path}/{dir}"):
                 if file.count("."):  # find the correct file
-                    if file == "AddressBook-v22.abcddb":
+                    if file == ADDRESSBOOK_FILENAME:
                         return f"{address_source_path}/{dir}/{file}"
-    raise ValueError
+    raise FileNotFoundError
 
 
 def get_members_from_numbers(numbers: Iterable[str], user: str) -> list[Member]:
@@ -191,8 +192,8 @@ def get_members_from_numbers(numbers: Iterable[str], user: str) -> list[Member]:
             """,
             contacts_connection,
         )  # get all contacts
-    except (ValueError, OperationalError):  # contact info was not able to be found
-        print("unable to find contacts")
+    except (FileNotFoundError, OperationalError):  # contact info was not able to be found
+        print("\nERROR: unable to find contacts")
         return [Member(number, number) for number in numbers] + [Member("self", "")]
 
     found_users: list[Member] = []
@@ -239,7 +240,7 @@ def get_messages(connection: Connection, chat_id: int) -> Iterator[tuple[str, st
                 ON 
                     m.ROWID = c.message_id
             ) 
-            LEFT OUTER JOIN 
+            LEFT OUTER JOIN
                 handle h 
             ON 
                 h.ROWID = m.handle_id
@@ -264,6 +265,8 @@ def anaylse_messages(members: list[Member], messages: Iterator[tuple[str, str]])
     min_wordle_number: int | float = inf
     for text, phone in messages:
         fail_detected = False
+        if text is None:
+            continue
         match text.split(" "):  # match texts to 'Wordle <num> <guesses>/6
             case ["Wordle", number, score, *_]:
                 try:
@@ -287,7 +290,7 @@ def anaylse_messages(members: list[Member], messages: Iterator[tuple[str, str]])
         member = find(members, key=lambda member: member.number == phone) if phone is not None else members[-1]  # find the member, if phone is None member is user
         if member is not None:
             if fail_detected:
-                member.fails += 1
+                member.fails.add(wordle_number)
             else:
                 member.add_wordle(wordle_number, guesses)  # add wordle
 
