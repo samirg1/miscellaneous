@@ -2,6 +2,21 @@
 # Date: 16-11-2022
 # Author: Samir Gupta
 
+# SPECS
+# - Python 3.11.0 with strict typing
+# - MacOS only
+
+# HOW TO USE
+# - Run this file
+# - Following prompts:
+#   - enter the user of your computer to find messages for
+#   - enter the name of the wordle group chat
+#   - enter the display name of the user selected above
+#
+# The user chosen is not found when searching for contact information, therefore the a display name is required
+# If contact information is not available / not found, the display names of the members of the group will be their phone numbers
+
+
 from math import inf, log10
 from os import listdir
 from sqlite3 import Connection, OperationalError, connect
@@ -14,20 +29,36 @@ ADDRESSBOOK_FILENAME = "AddressBook-v22.abcddb"
 
 
 class Member:
+    """
+    Class to store member data.
+    """
+
     def __init__(self, name: str, number: str):
+        """
+        Initialise a member.
+        - Input:
+            - name (str): The display name of the member.
+            - number (str): The phone number of the member as a string.
+        """
         self.name = name
         self.number = number
-        self._games: dict[int, int] = {}
+        self._games: dict[int, int] = {}  # dictionary to avoid duplicates
         self._current_guess_sum = 0
 
         self.completed = 0
-        self.fails: set[int] = set()
+        self.fails: set[int] = set()  # set to avoid duplicates
         self.average_guesses = 0
 
     def __repr__(self) -> str:
         return f"({self.name}, {self.number}, {self._games})"
 
     def add_wordle(self, no: int, guesses: int):
+        """
+        Add a wordle to the member.
+        - Input:
+            - no (int): The wordle number.
+            - guesses (int): The number of guesses for the wordle.
+        """
         self._games[no] = guesses
         self._current_guess_sum += guesses
         self.completed = len(self._games)
@@ -71,9 +102,9 @@ def get_db_connection() -> tuple[Connection, str]:
             index = int(user) - 1
             connection = connect(f"/Users/{potential_users[index]}/Library/Messages/chat.db")  # get db connection
             break
-        except (ValueError, IndexError):
+        except (ValueError, IndexError):  # invalid input
             print("invalid user number - try again")
-        except OperationalError:
+        except OperationalError:  # user has no associated messages
             print("messages not found for this user - try again")
 
     return connection, potential_users[index]
@@ -192,6 +223,7 @@ def get_members_from_numbers(numbers: Iterable[str], user: str) -> list[Member]:
             """,
             contacts_connection,
         )  # get all contacts
+        contacts_connection.close()
     except (FileNotFoundError, OperationalError):  # contact info was not able to be found
         print("\nERROR: unable to find contacts")
         return [Member(number, number) for number in numbers] + [Member("self", "")]
@@ -201,15 +233,18 @@ def get_members_from_numbers(numbers: Iterable[str], user: str) -> list[Member]:
     for number in numbers:
         for i in range(len(all_contacts)):
             first, last, contact_number = cast(tuple[str, str, str], all_contacts.iloc[i, :])  # retrieve data from all contacts
+            
             contact_number = "".join([n for n in contact_number if n != " "])  # remove spaces
             if contact_number[0] == "0":  # replace 0 at start with +61
                 contact_number = "+61" + contact_number[1:]
+
             name = first or "" + " " + last or ""  # combine first and last names
             name = ("".join(n for n in name if n.isalnum() or n == " ")).strip()  # clean up
 
             if number == contact_number:  # add a found user and break
                 found_users.append(Member(name, number))
                 break
+
         else:  # if we did not find a contact, set the contact name to just the number
             found_users.append(Member(number, number))
 
@@ -330,14 +365,7 @@ def main():
     members = get_chat_members(connection, chat_id, user)  # get members of the chat
     messages = get_messages(connection, chat_id)  # get the messages of the chat
     print_summary(members, messages)  # print the summary of the chat
-
-    # m = read_sql_query(
-    #     """
-    #     SELECT text from message m JOIN chat_message_join c on m.ROWID = c.message_id WHERE chat_id = 2
-    #     """,
-    #     connection,
-    # )
-    # print(len(m))
+    connection.close()
 
 
 if __name__ == "__main__":
